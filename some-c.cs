@@ -140,6 +140,42 @@ namespace Alm.AssetLiability.Report.TotalReturn.Reports
             return ret.OrderBy(o => o.Key).ToDictionary();
         }
 
+                public static Dictionary<DateTime, Dictionary<string, object>> DDDAllocationHistory(this List<TRORData> trorData, DateTime startDate, DateTime endDate)
+        {
+            //Get Current TROR Data
+            var ret = new Dictionary<DateTime, Dictionary<string,object>>();
+            //Group data By EndOfMonth and H2
+            var byEom = trorData.Where(e => e.EndOfMonth.Date >= startDate.Eom().Date && e.EndOfMonth.Date <= endDate.Eom().Date).GroupBy(g => g.EndOfMonth).ToList();
+
+            //Find all allocations that are greater than startdate and have a total value greater than 0
+            var allocations = trorData.GroupBy(a => a.H2)
+                .Where(o => o.Sum(s => s.MarketValue) > 0).Distinct();
+
+            byEom.ForEach((d, i) =>
+            {
+                //Get monthly total
+                var ttlEomEndMv = d.Sum(o => o.MarketValue ?? 0);
+                //Create columns for eom
+                var eomAllocation = allocations.ToDictionary(a => AllocationColumnDef.FromName(a.Key), v => (object)0.0M);
+                //Add End of Month column
+                eomAllocation.Add(AllocationColumnDef.EndOfMonth, d.Key);
+
+                d.GroupBy(o => o.H2).ForEach(ga =>
+                {
+                    var val = ga.Sum(o => o.MarketValue ?? 0).SafeDivision(ttlEomEndMv);
+                    eomAllocation[AllocationColumnDef.FromName(ga.Key)] = val;
+                });
+                
+                //set order of Groups
+                var grpdEomAllocations =
+                    eomAllocation.OrderBy(o => o.Key.Order).ToDictionary(k => k.Key.Name, v => v.Value);
+                
+                ret.Add(d.Key, grpdEomAllocations);
+            });
+            
+            return ret.OrderBy(o => o.Key).ToDictionary();
+        }
+
         public static IEnumerable<PerformanceByPosition> PerformanceByPosition(this List<TRORData> trorData, DateTime endDate)
         {
             //Get Current TROR Data
